@@ -1,12 +1,45 @@
 package rules.aws.s3
 
-import akka.typed.{ActorSystem, Behavior, Terminated}
+import akka.actor.PoisonPill
+import akka.typed.{ActorRef, ActorSystem, Behavior, Terminated}
 import akka.typed.scaladsl.{Actor, TimerScheduler}
-
-
 
 object Foo {
   import scala.concurrent.duration.FiniteDuration
+
+  sealed trait DeathWatch
+  case object Die extends DeathWatch
+  object DeathKey
+
+  private def reaper(lifetime: FiniteDuration) = Actor.withTimers[DeathWatch] {
+    timers =>
+      timers.startSingleTimer(DeathKey, Die, lifetime)
+      Actor.immutable[DeathWatch] { (_, msg) =>
+        msg match {
+          case Die => Actor.stopped
+        }
+      }
+  }
+
+  def withLifetime2[T](lifetime: FiniteDuration)(
+      wrapped: Behavior[T]): Behavior[T] = {
+    Actor.deferred[T] { ctx =>
+      val doom = ctx.spawnAnonymous[DeathWatch](reaper(lifetime))
+      ctx.watch(doom)
+
+      val worker = ctx.spawnAnonymous[T](wrapped)
+      ctx.watch(worker)
+
+      Actor.immutable[T] { (_, msg) =>
+        worker ! msg
+        Actor.same
+      } onSignal {
+        case (_, Terminated(ref)) =>
+          ctx.system.log.info("Child terminated", ref)
+          Actor.stopped
+      }
+    }
+  }
 
   def withLifetime[T](lifetime: FiniteDuration, death: T, timerKey: Any)(
       factory: TimerScheduler[T] => Behavior[T]): Behavior[T] = {
@@ -18,7 +51,6 @@ object Foo {
         Actor.immutable[T] { (_, msg) =>
           msg match {
             case `death` =>
-              println("---> KILLED <---")
               Actor.stopped
             case other =>
               worker ! other
@@ -57,11 +89,14 @@ object FileWatcher {
   case object DeathKey
 
   val behavior: Behavior[Command] =
-    Foo.withLifetime[Command](5.seconds, Death, DeathKey) {
-      Foo.withPolling[Command](1.seconds, Tick, Polling) { timers =>
-        Actor.immutable { (_, msg) =>
-          println("NICE! " + msg)
-          Actor.same
+    //Foo.withLifetime[Command](5.seconds, Death, DeathKey) {
+    Foo.withLifetime2[Command](5.seconds) {
+      Actor.withTimers {
+        Foo.withPolling[Command](1.seconds, Tick, Polling) { timers =>
+          Actor.immutable { (_, msg) =>
+            println("NICE! " + msg)
+            Actor.same
+          }
         }
       }
     }
