@@ -4,8 +4,7 @@ import rules.behaviors._
 import akka.typed.{ActorRef, ActorSystem, Behavior}
 import akka.typed.scaladsl.Actor
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
-import com.amazonaws.regions.{Region, Regions}
-import com.amazonaws.services.s3.model.S3Object
+import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client}
 
 import scala.concurrent.duration.FiniteDuration

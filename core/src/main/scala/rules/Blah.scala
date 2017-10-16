@@ -6,16 +6,6 @@ import rx._
 
 import scala.io.StdIn
 
-trait Example extends Rule[List[Int]] {
-
-  val src1: Sense[List[String]] = Sensezz.init
-  val src2: Sense[Int] = Sensezz.init
-
-  override val invariant: Rx[List[Int]] = AllReady(src1, src2) { ls => i =>
-    ls.map(_.toInt).filter(_ < i)
-  }
-}
-
 trait Example2 extends Rule[List[Int]] {
   val fst: Var[Int] = Var(0)
   val snd: Var[Int] = Var(0)
@@ -79,19 +69,6 @@ object Blah {
     }
   }
 
-  def makeHook[A](target: Sense[A]): Behavior[A] = Actor.immutable { (_, v) =>
-    target() = Ready(v)
-    Actor.same
-  }
-
-  class ExampleRunner2(ctx: ActorContext[Nothing])(
-      override val rxOwnerContext: rx.Ctx.Owner)
-      extends Example {
-    val src1_hook = ctx.spawn(makeHook(src1), "src1-hook")
-    val src2_hook = ctx.spawn(makeHook(src2), "src2-hook")
-  }
-
-  //------------------
   def makeHook2[A](target: Var[A]): Behavior[A] = Actor.immutable { (_, v) =>
     target() = v
     Actor.same
@@ -156,11 +133,9 @@ object Blah {
         ctx.spawn(HackSensor.hack(Subscribers.forward(subs2)), "hack-sensor-2")
 
       //Rules
-      val omg = new ExampleRunner2(ctx)(rxOwner)
       val hook = ctx.spawn(ExampleRunner.hook, "hook")
 
       hackSubs ! Subscribers.Subscribe(hook)
-      hackSubs ! Subscribers.Subscribe(omg.src2_hook)
       hack ! HackSensor.Signal()
 
       ////////////////
