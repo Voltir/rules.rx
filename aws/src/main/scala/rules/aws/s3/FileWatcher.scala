@@ -1,80 +1,16 @@
 package rules.aws.s3
 
-import akka.actor.PoisonPill
-import akka.typed.{ActorRef, ActorSystem, Behavior, Terminated}
-import akka.typed.scaladsl.{Actor, TimerScheduler}
+import rules.behaviors._
+import akka.typed.{ActorRef, ActorSystem, Behavior}
+import akka.typed.scaladsl.Actor
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+import com.amazonaws.regions.{Region, Regions}
+import com.amazonaws.services.s3.model.S3Object
+import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client}
 
-object Foo {
-  import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.FiniteDuration
 
-  sealed trait DeathWatch
-  case object Die extends DeathWatch
-  object DeathKey
-
-  private def reaper(lifetime: FiniteDuration) = Actor.withTimers[DeathWatch] {
-    timers =>
-      timers.startSingleTimer(DeathKey, Die, lifetime)
-      Actor.immutable[DeathWatch] { (_, msg) =>
-        msg match {
-          case Die => Actor.stopped
-        }
-      }
-  }
-
-  def withLifetime2[T](lifetime: FiniteDuration)(
-      wrapped: Behavior[T]): Behavior[T] = {
-    Actor.deferred[T] { ctx =>
-      val doom = ctx.spawnAnonymous[DeathWatch](reaper(lifetime))
-      ctx.watch(doom)
-
-      val worker = ctx.spawnAnonymous[T](wrapped)
-      ctx.watch(worker)
-
-      Actor.immutable[T] { (_, msg) =>
-        worker ! msg
-        Actor.same
-      } onSignal {
-        case (_, Terminated(ref)) =>
-          ctx.system.log.info("Child terminated", ref)
-          Actor.stopped
-      }
-    }
-  }
-
-  def withLifetime[T](lifetime: FiniteDuration, death: T, timerKey: Any)(
-      factory: TimerScheduler[T] => Behavior[T]): Behavior[T] = {
-    Actor.withTimers[T] { timers =>
-      timers.startSingleTimer(timerKey, death, lifetime)
-      Actor.deferred { ctx =>
-        val worker = ctx.spawn(factory(timers), "run")
-        ctx.watch(worker)
-        Actor.immutable[T] { (_, msg) =>
-          msg match {
-            case `death` =>
-              Actor.stopped
-            case other =>
-              worker ! other
-              Actor.same
-          }
-        } onSignal {
-          case (_, Terminated(ref)) if ref == worker =>
-            ctx.system.log.debug("Runner terminated", ref)
-            Actor.stopped
-        }
-      }
-    }
-  }
-
-  def withPolling[T](frequency: FiniteDuration, tick: T, tickKey: Any)(
-      factory: TimerScheduler[T] => Behavior[T])
-    : TimerScheduler[T] => Behavior[T] = { timers =>
-    timers.startPeriodicTimer(tickKey, tick, frequency)
-    factory(timers)
-  }
-
-}
-
-object FileWatcher {
+class FileWatcher(client: AmazonS3, pollInterval: FiniteDuration) {
   import concurrent.duration._
 
   // Behavior Messages
@@ -82,31 +18,57 @@ object FileWatcher {
   sealed trait Internal extends Command
 
   case object Tick extends Internal
-  case object Death extends Internal
 
   // Timer Key
-  case object Polling
-  case object DeathKey
+  case object PollingKey
 
-  val behavior: Behavior[Command] =
-    //Foo.withLifetime[Command](5.seconds, Death, DeathKey) {
-    Foo.withLifetime2[Command](5.seconds) {
-      Actor.withTimers {
-        Foo.withPolling[Command](1.seconds, Tick, Polling) { timers =>
-          Actor.immutable { (_, msg) =>
-            println("NICE! " + msg)
-            Actor.same
-          }
+  def watch(path: S3Path,
+            lifetime: FiniteDuration,
+            notify: ActorRef[Option[S3Path]]): Behavior[Command] = {
+    finiteRepeat[Command](lifetime)(Tick, PollingKey) { timers =>
+      Actor.immutable { (ctx, msg) =>
+        msg match {
+          case Tick =>
+            try {
+              if (client.doesBucketExistV2(path.bucket) &&
+                  client.doesObjectExist(path.bucket, path.obj)) {
+                notify ! Some(path)
+              } else {
+                notify ! None
+              }
+            } catch {
+              case e: Exception =>
+                ctx.system.log.warning("Unexpected error is s3 watcher {}", e)
+            } finally {
+              timers.startSingleTimer(PollingKey, Tick, pollInterval)
+            }
         }
+        Actor.same
       }
     }
+  }
 }
 
 object Test extends App {
   import scala.io.StdIn
+  import concurrent.duration._
+
+  val temp: Behavior[Option[S3Path]] = Actor.immutable { (_, msg) =>
+    println(s"Noice: $msg")
+    Actor.same
+  }
+
+  val s3Client = AmazonS3Client
+    .builder()
+    .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
+    .withRegion(Regions.US_WEST_2)
+    .build()
 
   val root = Actor.deferred[Nothing] { ctx =>
-    val test = ctx.spawn(FileWatcher.behavior, "neat")
+    val path = S3Path("test-bucket", "test")
+    val tmp = ctx.spawn(temp, "temp-watcher-thing")
+    val watcher = new FileWatcher(s3Client, 5.second)
+    val test = ctx.spawn(watcher.watch(path, 30.seconds, tmp), "neat")
     Actor.empty
   }
 

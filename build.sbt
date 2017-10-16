@@ -31,3 +31,4 @@ lazy val aws = (project in file("aws"))
   .settings(
     libraryDependencies ++= Dependencies.aws
   )
+  .dependsOn(core)
