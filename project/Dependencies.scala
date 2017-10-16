@@ -27,4 +27,8 @@ object Dependencies {
     "com.amazonaws" % "aws-java-sdk" % awsVersion,
     "com.amazonaws" % "aws-java-sdk-s3" % awsVersion
   )
+
+  lazy val quartz = common ++ Seq(
+    "com.enragedginger" %% "akka-quartz-scheduler" % "1.6.1-akka-2.5.x"
+  )
 }

@@ -14,7 +14,7 @@ val commonSettings = Seq(
   )
 
 lazy val root = Project("rules", file("." + "rules")).in(file("."))
-  .aggregate(core, aws)
+  .aggregate(core, aws, quartz)
   .settings(commonSettings: _*)
 
 lazy val core = (project in file("core"))
@@ -30,5 +30,13 @@ lazy val aws = (project in file("aws"))
   .settings(commonSettings: _*)
   .settings(
     libraryDependencies ++= Dependencies.aws
+  )
+  .dependsOn(core)
+
+lazy val quartz = (project in file("quartz"))
+  .settings(name := "rules-quartz")
+  .settings(commonSettings: _*)
+  .settings(
+    libraryDependencies ++= Dependencies.quartz
   )
   .dependsOn(core)
