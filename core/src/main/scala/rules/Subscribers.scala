@@ -13,7 +13,7 @@ class Subscribers[Reply] {
       : Behavior[Subscribers.Command[Reply]] = {
       msg match {
         case Subscribers.Subscribe(sub) =>
-          println(s"${ctx.self.path}: New sub -> $sub")
+          ctx.system.log.info(s"New sub: ${sub.path.name}")
           dudes.append(sub)
           ctx.watch(sub)
           if (current != null) {
@@ -21,13 +21,13 @@ class Subscribers[Reply] {
           }
 
         case Subscribers.Notify(value) =>
-          println(s"${ctx.self.path}: Notify(${dudes.length}): $value")
           dudes.foreach(_ ! value)
       }
       this
     }
 
-    override def onSignal: PartialFunction[Signal, Behavior[Subscribers.Command[Reply]]] = {
+    override def onSignal
+      : PartialFunction[Signal, Behavior[Subscribers.Command[Reply]]] = {
       case Terminated(ref) =>
         ctx.system.log.info("Subscriber {} is TERMINATED", ref)
         dudes -= ref.asInstanceOf[ActorRef[Reply]]

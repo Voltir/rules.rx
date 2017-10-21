@@ -50,11 +50,6 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
       case None    => client.listObjects(req)
     }
 
-    println(client.doesBucketExistV2(path.bucket))
-    println(client.doesObjectExist(path.bucket, path.obj))
-    println(path.path)
-    println(path.path)
-    println(resp)
     val cnt = resp.getObjectSummaries.size() + acc
 
     resp.getMarker
@@ -73,7 +68,6 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
 
     def notifyStable(cnt: Int,
                      timers: TimerScheduler[Command]): Behavior[Command] = {
-      println("GO STABLE!")
       notify ! Some(path)
       timers.startSingleTimer(TickKey, Tick, config.stableInterval)
       impl(path, Stable(cnt), notify, timers)
@@ -81,25 +75,20 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
 
     def unstable(cnt: Int,
                  timers: TimerScheduler[Command]): Behavior[Command] = {
-      println("GO UNSTABLE!")
       timers.startSingleTimer(TickKey, Tick, config.unstableInterval)
       impl(path, Unstable(cnt), notify, timers)
     }
 
     def detecting(timers: TimerScheduler[Command]): Behavior[Command] = {
-      println("GO NOT DETECTED!")
       notify ! None
       timers.startSingleTimer(TickKey, Tick, config.notDetectedInterval)
       impl(path, NotDetected, notify, timers)
     }
 
-    println("!?")
     Actor.immutable { (_, msg) =>
       msg match {
         case Tick =>
-          println("--- TICK ---")
           val size = check(path)
-          println(s"----------> SIZE: $size ($state) <---------------")
           state match {
             case NotDetected if size > 0  => unstable(size, timers)
             case NotDetected if size == 0 => detecting(timers)

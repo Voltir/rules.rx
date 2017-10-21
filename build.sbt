@@ -1,6 +1,6 @@
 val commonSettings = Seq(
     organization := "com.voltir",
-    version := "1.0",
+    version := "0.1.0-SNAPSHOT",
     parallelExecution in Test := false,
     //fork := true,
     scalacOptions ++= Seq(
