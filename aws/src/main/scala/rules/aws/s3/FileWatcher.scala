@@ -1,11 +1,9 @@
 package rules.aws.s3
 
 import rules.behaviors._
-import akka.typed.{ActorRef, ActorSystem, Behavior}
+import akka.typed.{ActorRef, Behavior}
 import akka.typed.scaladsl.Actor
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
-import com.amazonaws.regions.Regions
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client}
+import com.amazonaws.services.s3.AmazonS3
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -45,42 +43,5 @@ class FileWatcher(client: AmazonS3, pollInterval: FiniteDuration) {
         Actor.same
       }
     }
-  }
-}
-
-object Test extends App {
-  import scala.io.StdIn
-  import concurrent.duration._
-
-  val temp: Behavior[Option[S3Path]] = Actor.immutable { (_, msg) =>
-    println(s"Noice: $msg")
-    Actor.same
-  }
-
-  val s3Client = AmazonS3Client
-    .builder()
-    .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
-    .withRegion(Regions.US_WEST_2)
-    .build()
-
-  val root = Actor.deferred[Nothing] { ctx =>
-    val path = S3Path("test-bucket", "test")
-    val tmp = ctx.spawn(temp, "temp-watcher-thing")
-    val watcher = new FileWatcher(s3Client, 5.second)
-    val test = ctx.spawn(watcher.watch(path, 30.seconds, tmp), "neat")
-    Actor.empty
-  }
-
-  val system = ActorSystem[Nothing](root, "HelloWorld")
-  try {
-    println("Press ENTER to exit the system")
-    StdIn.readLine()
-  } catch {
-    case e: Exception =>
-      println("---------------------> NOOOOOOOOOOOo <----------------")
-      println(e.getMessage)
-  } finally {
-    println("DEATH!")
-    system.terminate()
   }
 }
