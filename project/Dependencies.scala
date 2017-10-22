@@ -14,6 +14,7 @@ object Dependencies {
   lazy val common = Seq(
     "com.typesafe.akka" %% "akka-typed" % akkaTypedVersion,
     "com.lihaoyi" %% "scalarx" % scalaRxVersion,
+    "org.typelevel" %% "cats-core" % "1.0.0-MF",
     "org.scalatest" %% "scalatest" % "3.0.4" % "test"
   )
 

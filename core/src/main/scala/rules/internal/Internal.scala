@@ -1,7 +1,7 @@
 package rules.internal
 
 import akka.typed.Behavior
-import rules.{Register, Sensor}
+import rules.{Register, Signal}
 
 import scala.language.experimental.macros
 import scala.reflect.macros._
@@ -13,7 +13,7 @@ object Internal {
 
     val rulesTpe = c.weakTypeOf[Rules]
     val registerTpe = c.weakTypeOf[Register[_]]
-    val sensorTpe = c.weakTypeOf[Sensor[_]]
+    val sensorTpe = c.weakTypeOf[Signal[_]]
     val zzzTpe = c.weakTypeOf[rx.Var[_]]
 
     val registered: List[c.Type] = {
