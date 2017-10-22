@@ -44,6 +44,14 @@ package object behaviors {
     factory(timers)
   }
 
+  case object PollingKey
+  def withPolling2[T](frequency: FiniteDuration, tick: T)(
+      factory: TimerScheduler[T] => Behavior[T]) = Actor.withTimers[T] {
+    timers =>
+      timers.startPeriodicTimer(PollingKey, tick, frequency)
+      factory(timers)
+  }
+
   // The inner handler for Tick needs to reschedule the timer manually
   def withRepeat[T](tick: T,
                     tickKey: Any,
