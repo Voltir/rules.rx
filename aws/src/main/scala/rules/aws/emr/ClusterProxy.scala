@@ -1,16 +1,24 @@
 package rules.aws.emr
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneId}
 
 import akka.typed.{ActorRef, Behavior}
 import akka.typed.scaladsl.{Actor, ActorContext}
 import com.amazonaws.services.elasticmapreduce.AmazonElasticMapReduce
-import com.amazonaws.services.elasticmapreduce.model.AddJobFlowStepsRequest
+import com.amazonaws.services.elasticmapreduce.model.{
+  AddJobFlowStepsRequest,
+  ListStepsRequest,
+  StepState => EmrStepState
+}
 import rules.Signal
 import rules.aws.emr.ClusterManager.RunningCluster
 import rx._
 
+import collection.JavaConverters._
+import scala.concurrent.duration.FiniteDuration
+
 class ClusterProxy(emr: AmazonElasticMapReduce,
+                   resyncInterval: FiniteDuration,
                    ctx: ActorContext[ClusterProxy.Command],
                    target: RunningCluster,
                    demandSensor: ActorRef[Signal.Command[List[Step]]])(
@@ -19,35 +27,33 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
 
   sealed trait StepStateDefinition
   case object Scheduled extends StepStateDefinition
-  case object Pending extends StepStateDefinition
-  case object Active extends StepStateDefinition
-  case object Completed extends StepStateDefinition
-  case object Terminated extends StepStateDefinition
+  case class Detected(state: EmrStepState) extends StepStateDefinition
 
-  case class StepState(step: Step,
+  case class StepState(stepName: StepName,
                        state: StepStateDefinition,
                        changedAt: LocalDateTime)
 
   val demand: Var[List[Step]] = Var(List.empty)
 
   val activeSteps
-    : Var[Option[Map[StepName, StepState]]] = Var(Some(Map.empty)) // skip over initial state query for test
+    : Var[Option[Map[StepName, StepState]]] = Var(None)
 
   private val processing: Rx[Option[Set[StepName]]] = Rx {
     activeSteps().map(_.keySet)
   }
 
-  private val toStart = Rx {
+  private val toStart: Rx[List[Step]] = Rx {
+    val currentDemand = demand()
     processing() match {
       case Some(active) =>
-        demand().filter(s => !active.contains(s.stepName))
+        currentDemand.filter(s => !active.contains(s.stepName))
 
       // Don't start any steps unless the current state of the running steps is known
       case None => List.empty
     }
   }
 
-  toStart.filter(_.isEmpty).foreach { steps =>
+  private val obs = toStart.filter(_.nonEmpty).foreach { steps =>
     val req = new AddJobFlowStepsRequest()
       .withSteps(steps.map(_.config): _*)
       .withJobFlowId(target.clusterId.value)
@@ -55,21 +61,61 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
     val now = LocalDateTime.now
     activeSteps() = activeSteps.now.map { active =>
       active ++ Map(
-        steps.map(s => s.stepName -> StepState(s, Scheduled, now)): _*)
+        steps.map(s => s.stepName -> StepState(s.stepName, Scheduled, now)): _*)
     }
-  // emr.addJobFlowSteps(req)
+    emr.addJobFlowSteps(req)
   }
 
-  activeSteps.foreach { xxx =>
-    println(s"--------- Cluster ${target.name} ---------")
-    println(xxx.getOrElse(Map.empty).mkString("\n"))
+  private val recencyFilter: ((StepName, StepState)) => Boolean = {
+    case (_, state) =>
+      val recencyCutoff = LocalDateTime.now.minusDays(2)
+      state.changedAt.isAfter(recencyCutoff)
   }
 
-  // Get Current State
+  private def sync(): Unit = {
+    val req = new ListStepsRequest()
+      .withClusterId(target.clusterId.value)
+      .withStepStates(EmrStepState.PENDING, EmrStepState.RUNNING)
+
+    val listed = emr.listSteps(req)
+
+    val detected = listed.getSteps.asScala.toList.map { summary =>
+      val name = StepName(summary.getName)
+      val createdAt = summary.getStatus.getTimeline.getCreationDateTime
+      val localCreatedAt =
+        createdAt.toInstant
+          .atZone(ZoneId.systemDefault())
+          .toLocalDateTime
+      val state =
+        StepState(name,
+                  Detected(EmrStepState.fromValue(summary.getStatus.getState)),
+                  localCreatedAt)
+      name -> state
+    }
+
+    val synced = Map(detected: _*)
+
+    val next = activeSteps.now
+      .getOrElse(Map.empty)
+      .filterKeys(keep => !synced.keySet.contains(keep))
+      .filter(recencyFilter)
+
+    println("=============== NEXT WILL BE ============")
+    println((next ++ synced).mkString("\n\n"))
+    activeSteps() = Some(next ++ synced)
+  }
 
   val init: Behavior[Command] = Actor.deferred { ctx =>
     Actor.withTimers { timers =>
-      Actor.ignore
+      timers.startPeriodicTimer(ResyncKey, Resync, resyncInterval)
+
+      Actor.immutable { (_, msg) =>
+        msg match {
+          case Resync    => sync()
+          case ListSteps => //todo
+        }
+        Actor.same
+      }
     }
   }
 
@@ -81,12 +127,17 @@ object ClusterProxy {
   sealed trait Command
   case object ListSteps extends Command
 
+  sealed trait Internal extends Command
+  case object Resync extends Internal
+  case object ResyncKey
+
   def apply(emr: AmazonElasticMapReduce,
+            resyncInterval: FiniteDuration,
             target: RunningCluster,
             demand: ActorRef[Signal.Command[List[Step]]])(
       implicit owner: rx.Ctx.Owner): Behavior[Command] =
     Actor.deferred { ctx =>
-      val wurt = new ClusterProxy(emr, ctx, target, demand)
+      val wurt = new ClusterProxy(emr, resyncInterval, ctx, target, demand)
       wurt.init
     }
 }
