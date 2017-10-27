@@ -1,6 +1,6 @@
 package rules
 
-import akka.typed.{ActorRef, Behavior, Terminated}
+import akka.typed.{ActorRef, Behavior, PreRestart, Terminated}
 import akka.typed.scaladsl.{Actor, ActorContext, TimerScheduler}
 import rx.Var
 
@@ -36,6 +36,8 @@ abstract class Signal[A](
       subscribers -= ref.asInstanceOf[ActorRef[Signal.Raise[A]]]
       this
   }
+
+  def preStart(): Unit = {}
 }
 
 object Signal {
@@ -57,7 +59,8 @@ object Signal {
     }
 
   def behavior[A](period: FiniteDuration)(
-      factory: ActorContext[Command[A]] => Actor.MutableBehavior[Command[A]]) = {
+      factory: ActorContext[Command[A]] => Actor.MutableBehavior[Command[A]])
+    : Behavior[Command[A]] = {
     Actor.withTimers[Command[A]] { timers =>
       timers.startPeriodicTimer(Signal.TickKey, Signal.Tick, period)
       Actor.mutable[Command[A]] { ctx =>

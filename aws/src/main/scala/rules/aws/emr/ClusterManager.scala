@@ -26,7 +26,7 @@ class ClusterManager(emr: AmazonElasticMapReduceClient,
 
   private val running: Var[Option[List[RunningCluster]]] = Var(None)
 
-  override protected def desired: Rx[Set[Int]] = Rx {
+  override protected val desired: Rx[Set[Int]] = Rx {
     val numSteps = steps().length
     val maxClusters =
       Math.max(numSteps / config.stepsPerCluster, config.maxCluster)

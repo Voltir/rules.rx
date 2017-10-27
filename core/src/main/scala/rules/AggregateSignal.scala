@@ -11,7 +11,7 @@ abstract class AggregateSignal[Key, Value: Monoid](
 
   import AggregateSignal._
 
-  protected def desired: Rx[Set[Key]]
+  protected val desired: Rx[Set[Key]]
 
   protected def start(aggregate: ActorRef[Command[Key, Value]],
                       key: Key): Behavior[Unit]
@@ -46,15 +46,17 @@ abstract class AggregateSignal[Key, Value: Monoid](
 
   private val agg = ctx.spawn(aggregatorBehavior, "aggregator")
 
-  desired.foreach { wanted =>
-    val active = state.now.keySet
-    wanted.diff(active).foreach { w =>
-      val child = ctx.spawnAnonymous(start(agg, w))
-      state() = state.now + (w -> State(child, None))
-    }
-    active.diff(wanted).foreach { notWanted =>
-      state.now.get(notWanted).map(_.ref).foreach(ctx.stop)
-      state() = state.now - notWanted
+  def soSad() = {
+    desired.foreach { wanted =>
+      val active = state.now.keySet
+      wanted.diff(active).foreach { w =>
+        val child = ctx.spawnAnonymous(start(agg, w))
+        state() = state.now + (w -> State(child, None))
+      }
+      active.diff(wanted).foreach { notWanted =>
+        state.now.get(notWanted).map(_.ref).foreach(ctx.stop)
+        state() = state.now - notWanted
+      }
     }
   }
 }
