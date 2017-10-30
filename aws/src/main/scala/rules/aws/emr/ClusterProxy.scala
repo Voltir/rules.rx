@@ -10,7 +10,7 @@ import com.amazonaws.services.elasticmapreduce.model.{
   ListStepsRequest,
   StepState => EmrStepState
 }
-import rules.Signal
+import rules.Wire
 import rules.aws.emr.ClusterManager.RunningCluster
 import rx._
 
@@ -21,7 +21,7 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
                    resyncInterval: FiniteDuration,
                    ctx: ActorContext[ClusterProxy.Command],
                    target: RunningCluster,
-                   demandSensor: ActorRef[Signal.Command[List[Step]]])(
+                   demandSensor: ActorRef[Wire.Command[List[Step]]])(
     implicit owner: rx.Ctx.Owner) {
   import ClusterProxy._
 
@@ -35,8 +35,7 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
 
   val demand: Var[List[Step]] = Var(List.empty)
 
-  val activeSteps
-    : Var[Option[Map[StepName, StepState]]] = Var(None)
+  val activeSteps: Var[Option[Map[StepName, StepState]]] = Var(None)
 
   private val processing: Rx[Option[Set[StepName]]] = Rx {
     activeSteps().map(_.keySet)
@@ -63,7 +62,15 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
       active ++ Map(
         steps.map(s => s.stepName -> StepState(s.stepName, Scheduled, now)): _*)
     }
-    emr.addJobFlowSteps(req)
+    try {
+      emr.addJobFlowSteps(req)
+    } catch {
+      case e: Exception =>
+        ctx.system.log.warning("Attempting to addJobFlowStep failed: {}!", e.getMessage)
+        val toRemove = steps.map(_.stepName).toSet
+        activeSteps() =
+          activeSteps.now.map(_.filterKeys(k => !toRemove.contains(k)))
+    }
   }
 
   private val recencyFilter: ((StepName, StepState)) => Boolean = {
@@ -72,7 +79,7 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
       state.changedAt.isAfter(recencyCutoff)
   }
 
-  private def sync(): Unit = {
+  private def sync(): Unit = try {
     val req = new ListStepsRequest()
       .withClusterId(target.clusterId.value)
       .withStepStates(EmrStepState.PENDING, EmrStepState.RUNNING)
@@ -103,6 +110,9 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
     println("=============== NEXT WILL BE ============")
     println((next ++ synced).mkString("\n\n"))
     activeSteps() = Some(next ++ synced)
+  } catch {
+    case e: Exception =>
+      ctx.system.log.warning("EMR failed to sync: {}", e.getMessage)
   }
 
   val init: Behavior[Command] = Actor.deferred { ctx =>
@@ -119,7 +129,7 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
     }
   }
 
-  ctx.spawnAnonymous(Signal.collectToVar(demand, demandSensor))
+  ctx.spawnAnonymous(Wire.toVar(demand, demandSensor))
 }
 
 object ClusterProxy {
@@ -134,7 +144,7 @@ object ClusterProxy {
   def apply(emr: AmazonElasticMapReduce,
             resyncInterval: FiniteDuration,
             target: RunningCluster,
-            demand: ActorRef[Signal.Command[List[Step]]])(
+            demand: ActorRef[Wire.Command[List[Step]]])(
       implicit owner: rx.Ctx.Owner): Behavior[Command] =
     Actor.deferred { ctx =>
       val wurt = new ClusterProxy(emr, resyncInterval, ctx, target, demand)

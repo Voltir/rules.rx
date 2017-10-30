@@ -4,8 +4,8 @@ import akka.typed.{ActorRef, Behavior}
 import akka.typed.scaladsl.{Actor, ActorContext}
 import cats.instances.list._
 import com.amazonaws.services.elasticmapreduce.AmazonElasticMapReduceClient
-import com.amazonaws.services.elasticmapreduce.model.{ Unit => _, _}
-import rules.{AggregateSignal, HasOwner, Signal, behaviors}
+import com.amazonaws.services.elasticmapreduce.model.{Unit => _, _}
+import rules._
 import rules.aws.emr.ClusterManager.RunningCluster
 import rx._
 
@@ -14,10 +14,10 @@ import scala.collection.JavaConverters._
 
 class ClusterManager(emr: AmazonElasticMapReduceClient,
                      config: ClusterManager.Config,
-                     stepSensor: ActorRef[Signal.Command[List[Step]]],
-                     ctx: ActorContext[Signal.Command[List[RunningCluster]]])(
+                     stepSensor: ActorRef[Wire.Command[List[Step]]],
+                     ctx: ActorContext[Wire.Command[List[RunningCluster]]])(
     implicit override val owner: rx.Ctx.Owner)
-    extends AggregateSignal[Int, List[RunningCluster]](ctx)
+    extends AggregateWire[Int, List[RunningCluster]]
     with HasOwner {
 
   import ClusterManager._
@@ -33,12 +33,12 @@ class ClusterManager(emr: AmazonElasticMapReduceClient,
     (1 to maxClusters).toSet
   }
 
-  override protected def start(
-      aggregate: ActorRef[AggregateSignal.Command[Int, List[RunningCluster]]],
-      key: Int
-  ): Behavior[Unit] =  {
-    Actor.ignore[Unit]
-  }
+//  override protected def start(
+//      aggregate: ActorRef[AggregateSignal.Command[Int, List[RunningCluster]]],
+//      key: Int
+//  ): Behavior[Unit] =  {
+//    Actor.ignore[Unit]
+//  }
 
   private def isManaged(clusterName: String): Boolean = ???
 
@@ -72,7 +72,11 @@ class ClusterManager(emr: AmazonElasticMapReduceClient,
   ctx.spawnAnonymous(pollClusters)
 
   // Bind signal to local Var
-  ctx.spawnAnonymous(Signal.collectToVar(steps, stepSensor))
+  ctx.spawnAnonymous(Wire.toVar(steps, stepSensor))
+
+  override protected def period = ???
+
+  override protected def start(aggregate: ActorRef[AggregateWire.Command[Int, List[RunningCluster]]], key: Int) = ???
 }
 
 object ClusterManager {

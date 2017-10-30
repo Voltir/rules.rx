@@ -2,6 +2,12 @@ package rules
 
 import collection.mutable.Stack
 import org.scalatest._
+import rules.internal.TestIt
+
+//@TestIt("Int" -> 0, "String" -> "SuperCool")
+//trait Wurt {
+//
+//}
 
 class FooSpec extends FlatSpec with Matchers {
 
@@ -20,7 +26,16 @@ class FooSpec extends FlatSpec with Matchers {
     }
   }
 
-  it should "zzz" in {
-    rules.construction.generate[ExampleRules](42)
-  }
+//  it should "lolwtf" in {
+//    println(Wurt.aaa)
+//    println(Wurt().omg)
+//    val neat = Wurt()
+//    println(neat.anInt)
+//    println(neat.anString)
+//  }
+
+//  it should "zzz" in {
+//    rules.construction.generate[ExampleRules](42)
+//  }
+
 }

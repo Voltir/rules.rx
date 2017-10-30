@@ -1,19 +1,24 @@
 val commonSettings = Seq(
-    organization := "com.voltir",
-    version := "0.1.0-SNAPSHOT",
-    parallelExecution in Test := false,
-    //fork := true,
-    scalacOptions ++= Seq(
-      "-language:existentials",
-      "-Xfuture",
-      "-Ypartial-unification"
-    ),
-    crossScalaVersions := Seq("2.12.3", "2.11.11"),
-    resolvers += "Akka Snapshots" at "https://repo.akka.io/snapshots/",
-    addCompilerPlugin(Dependencies.kindProjector)
-  )
+  organization := "com.voltir",
+  version := "0.1.0-SNAPSHOT",
+  parallelExecution in Test := false,
+  //fork := true,
+  scalacOptions ++= Seq(
+    "-language:existentials",
+    "-language:experimental.macros",
+    "-Xfuture",
+    "-Ypartial-unification"
+  ),
+  crossScalaVersions := Seq("2.12.3", "2.11.11"),
+  resolvers += "Akka Snapshots" at "https://repo.akka.io/snapshots/",
+  addCompilerPlugin(Dependencies.kindProjector),
+  resolvers += Resolver.sonatypeRepo("releases"),
+  addCompilerPlugin(
+    "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+)
 
-lazy val root = Project("rules", file("." + "rules")).in(file("."))
+lazy val root = Project("rules", file("." + "rules"))
+  .in(file("."))
   .aggregate(core, aws, quartz)
   .settings(commonSettings: _*)
 
