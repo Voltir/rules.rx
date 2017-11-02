@@ -43,7 +43,14 @@ trait AmazonS3Mock { self: MockFactory =>
       }
 
       def loop(remaining: List[List[S3ObjectSummary]]): Unit = remaining match {
+        case Nil =>
+          (result.getObjectSummaries _)
+            .expects()
+            .anyNumberOfTimes()
+            .onCall(() => List.empty.asJava)
+
         case h :: Nil =>
+          println("HOLD HERE!")
           (result.getObjectSummaries _)
             .expects()
             .anyNumberOfTimes()
@@ -53,11 +60,6 @@ trait AmazonS3Mock { self: MockFactory =>
           (result.getObjectSummaries _).expects().once().onCall(() => h.asJava)
           loop(tail)
 
-        case Nil =>
-          (result.getObjectSummaries _)
-            .expects()
-            .anyNumberOfTimes()
-            .onCall(() => List.empty.asJava)
       }
       loop(seq)
     }

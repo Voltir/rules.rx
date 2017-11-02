@@ -34,6 +34,7 @@ class DirectoryWatcherSpec
 
   val somePath = S3Path("", "")
   val cfg = DirectoryWatcher.Config(
+    stableInterval = 5.milliseconds,
     notDetectedInterval = 5.milliseconds,
     unstableInterval = 5.milliseconds
   )
@@ -88,6 +89,37 @@ class DirectoryWatcherSpec
     val ref = system.spawnAnonymous(behavior)
     probe.expectMsg(false)
     probe.expectMsg(true)
+    system.stop(ref.toUntyped)
+  }
+
+  it should "return to detecting if the source directory is deleted" in {
+    val client = mock[AmazonS3]
+    val result = mock[ObjectListing]
+
+    result.mockSequence(
+      List(
+        List.empty[S3ObjectSummary],
+        List(new S3ObjectSummary(), new S3ObjectSummary()),
+        List(new S3ObjectSummary(), new S3ObjectSummary()),
+        List.empty[S3ObjectSummary]
+      ))
+
+    client.mockListObjects(result)
+
+    val dirs = new DirectoryWatcher(client, cfg)
+    val probe = TestProbe[Boolean]("test-probe")
+
+    val behavior =
+      dirs.watch(
+        somePath,
+        probe.testActor,
+        initialDelay = 5.millis
+      )(identity)
+
+    val ref = system.spawnAnonymous(behavior)
+    probe.expectMsg(false)
+    probe.expectMsg(true)
+    probe.expectMsg(false)
     system.stop(ref.toUntyped)
   }
 }

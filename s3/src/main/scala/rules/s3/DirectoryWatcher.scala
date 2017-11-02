@@ -107,6 +107,7 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
 
                 case Stable(prev) if size == prev => stable(size)
                 case Stable(_) if size == -1      => stable(size)
+                case Stable(_) if size == 0       => detecting
                 case Stable(_)                    => unstable(size)
 
                 case _ => stable(size)

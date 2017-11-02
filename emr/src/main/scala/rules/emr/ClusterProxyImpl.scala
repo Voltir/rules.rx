@@ -19,7 +19,8 @@ class ClusterProxyImpl(
   import ClusterProxyImpl._
 
   private def scheduleStep(ctx: ActorContext[ClusterProxyImpl.Command])(
-      steps: List[Step]): Unit = {
+      steps: List[Step]): Unit = if (steps.nonEmpty) {
+
     scheduled() = scheduled.now ++ steps.map(_.stepName)
 
     val req = new AddJobFlowStepsRequest()
