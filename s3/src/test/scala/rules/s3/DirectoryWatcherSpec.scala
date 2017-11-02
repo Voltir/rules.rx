@@ -1,6 +1,6 @@
 package rules.s3
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.ActorSystem
 import akka.testkit.TestKit
 import akka.typed.testkit.TestKitSettings
 import akka.typed.scaladsl.adapter._
@@ -8,16 +8,9 @@ import org.scalatest._
 import com.amazonaws.services.s3.AmazonS3
 import org.scalamock.scalatest.MockFactory
 import akka.typed.testkit.scaladsl._
-import com.amazonaws.services.s3.model.{
-  ListObjectsRequest,
-  ObjectListing,
-  S3ObjectSummary
-}
-import org.scalamock.handlers.CallHandler1
-import org.scalamock.specs2.MockContext
+import com.amazonaws.services.s3.model.{ObjectListing, S3ObjectSummary}
 
 import scala.concurrent.duration._
-import scala.collection.JavaConverters._
 
 trait TypedHelper { self: TestKit =>
   implicit def typedSys: akka.typed.ActorSystem[Nothing] =
@@ -26,55 +19,8 @@ trait TypedHelper { self: TestKit =>
   implicit def testkit: TestKitSettings = TestKitSettings(typedSys)
 }
 
-trait AmazonS3Mock { self: MockFactory =>
-
-  implicit class MockedAmazonS3(client: AmazonS3) {
-    def mockListObjects(result: ObjectListing)
-      : CallHandler1[ListObjectsRequest, ObjectListing] = {
-      (client
-        .listObjects(_: com.amazonaws.services.s3.model.ListObjectsRequest))
-        .expects(*)
-        .anyNumberOfTimes()
-        .onCall { (a: ListObjectsRequest) =>
-          result
-        }
-    }
-  }
-
-  implicit class MockedObjectListing(result: ObjectListing) {
-    def using(inp: List[S3ObjectSummary]) = {
-      (result.isTruncated _).expects().anyNumberOfTimes().onCall { () =>
-        false
-      }
-
-      (result.getObjectSummaries _).expects().anyNumberOfTimes().onCall { () =>
-        inp.asJava
-      }
-    }
-
-    def mockSequence(seq: List[List[S3ObjectSummary]]) = {
-      (result.isTruncated _).expects().anyNumberOfTimes().onCall { () =>
-        false
-      }
-
-      def loop(remaining: List[List[S3ObjectSummary]]): Unit = remaining match {
-        case h :: Nil =>
-          (result.getObjectSummaries _)
-            .expects()
-            .anyNumberOfTimes()
-            .onCall(() => h.asJava)
-
-        case h :: tail =>
-          (result.getObjectSummaries _).expects().once().onCall(() => h.asJava)
-          loop(tail)
-      }
-      loop(seq)
-    }
-  }
-}
-
 class DirectoryWatcherSpec
-    extends TestKit(ActorSystem("Stab"))
+    extends TestKit(ActorSystem("test-system"))
     with FlatSpecLike
     with MockFactory
     with Matchers

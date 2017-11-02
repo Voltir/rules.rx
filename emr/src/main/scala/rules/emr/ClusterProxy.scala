@@ -1,4 +1,4 @@
-package rules.aws.emr
+package rules.emr
 
 import java.time.{LocalDateTime, ZoneId}
 
@@ -11,7 +11,7 @@ import com.amazonaws.services.elasticmapreduce.model.{
   StepState => EmrStepState
 }
 import rules.Wire
-import rules.aws.emr.ClusterManager.RunningCluster
+import rules.emr.ClusterManager.RunningCluster
 import rx._
 
 import collection.JavaConverters._
@@ -66,7 +66,8 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
       emr.addJobFlowSteps(req)
     } catch {
       case e: Exception =>
-        ctx.system.log.warning("Attempting to addJobFlowStep failed: {}!", e.getMessage)
+        ctx.system.log
+          .warning("Attempting to addJobFlowStep failed: {}!", e.getMessage)
         val toRemove = steps.map(_.stepName).toSet
         activeSteps() =
           activeSteps.now.map(_.filterKeys(k => !toRemove.contains(k)))
@@ -79,41 +80,40 @@ class ClusterProxy(emr: AmazonElasticMapReduce,
       state.changedAt.isAfter(recencyCutoff)
   }
 
-  private def sync(): Unit = try {
-    val req = new ListStepsRequest()
-      .withClusterId(target.clusterId.value)
-      .withStepStates(EmrStepState.PENDING, EmrStepState.RUNNING)
+  private def sync(): Unit =
+    try {
+      val req = new ListStepsRequest()
+        .withClusterId(target.clusterId.value)
+        .withStepStates(EmrStepState.PENDING, EmrStepState.RUNNING)
 
-    val listed = emr.listSteps(req)
+      val listed = emr.listSteps(req)
 
-    val detected = listed.getSteps.asScala.toList.map { summary =>
-      val name = StepName(summary.getName)
-      val createdAt = summary.getStatus.getTimeline.getCreationDateTime
-      val localCreatedAt =
-        createdAt.toInstant
-          .atZone(ZoneId.systemDefault())
-          .toLocalDateTime
-      val state =
-        StepState(name,
-                  Detected(EmrStepState.fromValue(summary.getStatus.getState)),
-                  localCreatedAt)
-      name -> state
+      val detected = listed.getSteps.asScala.toList.map { summary =>
+        val name = StepName(summary.getName)
+        val createdAt = summary.getStatus.getTimeline.getCreationDateTime
+        val localCreatedAt =
+          createdAt.toInstant
+            .atZone(ZoneId.systemDefault())
+            .toLocalDateTime
+        val state =
+          StepState(
+            name,
+            Detected(EmrStepState.fromValue(summary.getStatus.getState)),
+            localCreatedAt)
+        name -> state
+      }
+
+      val synced = Map(detected: _*)
+
+      val next = activeSteps.now
+        .getOrElse(Map.empty)
+        .filterKeys(keep => !synced.keySet.contains(keep))
+        .filter(recencyFilter)
+      activeSteps() = Some(next ++ synced)
+    } catch {
+      case e: Exception =>
+        ctx.system.log.warning("EMR failed to sync: {}", e.getMessage)
     }
-
-    val synced = Map(detected: _*)
-
-    val next = activeSteps.now
-      .getOrElse(Map.empty)
-      .filterKeys(keep => !synced.keySet.contains(keep))
-      .filter(recencyFilter)
-
-    println("=============== NEXT WILL BE ============")
-    println((next ++ synced).mkString("\n\n"))
-    activeSteps() = Some(next ++ synced)
-  } catch {
-    case e: Exception =>
-      ctx.system.log.warning("EMR failed to sync: {}", e.getMessage)
-  }
 
   val init: Behavior[Command] = Actor.deferred { ctx =>
     Actor.withTimers { timers =>
