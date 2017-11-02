@@ -6,7 +6,7 @@ import com.amazonaws.services.elasticmapreduce.AmazonElasticMapReduce
 import rules.{HasOwner, Wire}
 import com.amazonaws.services.elasticmapreduce.model.AddJobFlowStepsRequest
 import rules.emr.ClusterManager.RunningCluster
-import rules.emr.ClusterStateWire.StepState
+import rules.emr.ClusterStepStateWire.StepState
 
 class ClusterProxyImpl(
     emr: AmazonElasticMapReduce,
@@ -68,7 +68,7 @@ object ClusterProxyImpl {
   )(implicit owner: rx.Ctx.Owner): Behavior[Command] = {
     Actor.deferred[Command] { ctx =>
       val stepsWire = ctx.spawn(
-        ClusterStateWire(emr, target, pollStepsInterval),
+        ClusterStepStateWire(emr, target, pollStepsInterval),
         "cluster-steps"
       )
       val proxy = new ClusterProxyImpl(emr, target, demandWire, stepsWire)

@@ -7,7 +7,7 @@ trait ClusterDemandInvariant { self: HasOwner =>
 
   val demand: Var[List[Step]] = Var(List.empty)
 
-  val detected: Var[Option[Map[StepName, ClusterStateWire.StepState]]] =
+  val detected: Var[Option[Map[StepName, ClusterStepStateWire.StepState]]] =
     Var(None)
 
   val scheduled: Var[Set[StepName]] = Var(Set.empty)
@@ -23,5 +23,13 @@ trait ClusterDemandInvariant { self: HasOwner =>
       case None =>
         List.empty
     }
+  }
+
+  //Clean up scheduled when demand for tasks drops
+  val _ = demand.reduce {
+    case (prev, next) =>
+      val removed = prev.map(_.stepName).diff(next.map(_.stepName))
+      scheduled() = scheduled.now diff removed.toSet
+      next
   }
 }

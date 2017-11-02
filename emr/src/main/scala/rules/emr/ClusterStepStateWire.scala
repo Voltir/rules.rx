@@ -14,12 +14,12 @@ import collection.JavaConverters._
 import scala.concurrent.duration.FiniteDuration
 import java.time.{LocalDateTime, ZoneId}
 
-class ClusterStateWire(
+class ClusterStepStateWire(
     emr: AmazonElasticMapReduce,
     target: RunningCluster,
-    ctx: ActorContext[Wire.Command[Map[StepName, ClusterStateWire.StepState]]]
-) extends Wire[Map[StepName, ClusterStateWire.StepState]](ctx) {
-  import ClusterStateWire._
+    ctx: ActorContext[Wire.Command[Map[StepName, ClusterStepStateWire.StepState]]]
+) extends Wire[Map[StepName, ClusterStepStateWire.StepState]](ctx) {
+  import ClusterStepStateWire._
 
   override protected def raise: Option[Map[StepName, StepState]] = {
     try {
@@ -53,7 +53,7 @@ class ClusterStateWire(
   }
 }
 
-object ClusterStateWire {
+object ClusterStepStateWire {
 
   final case class StepState(
       state: EmrStepState,
@@ -66,7 +66,7 @@ object ClusterStateWire {
       resyncInterval: FiniteDuration
   ): Behavior[Wire.Command[Map[StepName, StepState]]] = {
     Wire.behavior(resyncInterval) { ctx =>
-      new ClusterStateWire(emr, target, ctx)
+      new ClusterStepStateWire(emr, target, ctx)
     }
   }
 }
