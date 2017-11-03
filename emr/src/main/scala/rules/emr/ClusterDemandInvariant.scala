@@ -26,7 +26,7 @@ trait ClusterDemandInvariant { self: HasOwner =>
   }
 
   //Clean up scheduled when demand for tasks drops
-  val _ = demand.reduce {
+  demand.reduce {
     case (prev, next) =>
       val removed = prev.map(_.stepName).diff(next.map(_.stepName))
       scheduled() = scheduled.now diff removed.toSet
