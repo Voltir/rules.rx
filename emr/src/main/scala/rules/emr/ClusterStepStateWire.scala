@@ -43,7 +43,6 @@ class ClusterStepStateWire(
           StepState(EmrStepState.fromValue(summary.getStatus.getState), time)
         name -> state
       }
-
       Some(Map(update: _*))
     } catch {
       case e: Exception =>

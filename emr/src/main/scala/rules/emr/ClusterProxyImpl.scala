@@ -39,8 +39,8 @@ class ClusterProxyImpl(
   }
 
   val init: Behavior[Command] = Actor.deferred { ctx =>
-    Wire.toVar(demand, demandWire)
-    Wire.toOptionVar(detected, stepsWire)
+    ctx.spawnAnonymous(Wire.toVar(demand, demandWire))
+    ctx.spawnAnonymous(Wire.toOptionVar(detected, stepsWire))
 
     //Actually Schedule on emr
     invariant.foreach { scheduleStep(ctx) }
