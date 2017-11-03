@@ -56,6 +56,18 @@ object Wire {
       Actor.empty
     }
 
+  def toOptionVar[A](sink: Var[Option[A]],
+                     ref: ActorRef[Command[A]]): Behavior[Unit] = {
+    Actor.deferred { ctx =>
+      val internal = Actor.immutable[Wire.Raise[A]] { (_, raised) =>
+        sink() = Some(raised.value)
+        Actor.same
+      }
+      ref ! Register(ctx.spawnAnonymous(internal))
+      Actor.empty
+    }
+  }
+
   def testWith[A](source: rx.Var[A],
                   period: FiniteDuration): Behavior[Command[A]] = {
     val factory = (ctx: ActorContext[Command[A]]) =>

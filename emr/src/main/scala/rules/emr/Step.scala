@@ -1,11 +1,11 @@
-package rules.aws.emr
+package rules.emr
 
 import com.amazonaws.services.elasticmapreduce.model.{
   ActionOnFailure,
   HadoopJarStepConfig,
   StepConfig
 }
-import rules.aws.s3.S3Path
+import rules.s3.S3Path
 
 trait Step {
   def stepName: StepName
@@ -20,7 +20,7 @@ case class SparkJarStep(
     args: List[String],
     override val stepName: StepName
 ) extends Step {
-  override def config = {
+  override def config: StepConfig = {
     val cfg = new HadoopJarStepConfig()
       .withJar("command-runner.jar")
       .withArgs(
@@ -34,7 +34,24 @@ case class SparkJarStep(
       .withArgs(args: _*)
 
     new StepConfig()
-      .withName(s"${stepName.value}")
+      .withName(stepName.value)
+      .withHadoopJarStep(cfg)
+      .withActionOnFailure(ActionOnFailure.CONTINUE)
+  }
+}
+
+case class EmrStreamingStep(
+    override val stepName: StepName,
+    args: List[String]
+) extends Step {
+  override def config: StepConfig = {
+    val cfg = new HadoopJarStepConfig()
+      .withJar("command-runner.jar")
+      .withArgs("hadoop-streaming")
+      .withArgs(args: _*)
+
+    new StepConfig()
+      .withName(stepName.value)
       .withHadoopJarStep(cfg)
       .withActionOnFailure(ActionOnFailure.CONTINUE)
   }

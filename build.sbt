@@ -1,8 +1,8 @@
 val commonSettings = Seq(
   organization := "com.voltir",
-  version := "0.1.0-SNAPSHOT",
+  version := "0.1.1-SNAPSHOT",
   parallelExecution in Test := false,
-  //fork := true,
+  //fork in Test := true,
   scalacOptions ++= Seq(
     "-language:existentials",
     "-language:experimental.macros",
@@ -19,7 +19,7 @@ val commonSettings = Seq(
 
 lazy val root = Project("rules", file("." + "rules"))
   .in(file("."))
-  .aggregate(core, aws, quartz)
+  .aggregate(core, s3, emr, quartz)
   .settings(commonSettings: _*)
 
 lazy val core = (project in file("core"))
@@ -30,13 +30,21 @@ lazy val core = (project in file("core"))
     libraryDependencies += Dependencies.scalaReflect.value % "provided"
   )
 
-lazy val aws = (project in file("aws"))
-  .settings(name := "rules-aws")
+lazy val s3 = (project in file("s3"))
+  .settings(name := "rules-s3")
   .settings(commonSettings: _*)
   .settings(
     libraryDependencies ++= Dependencies.aws
   )
   .dependsOn(core)
+
+lazy val emr = (project in file("emr"))
+  .settings(name := "rules-emr")
+  .settings(commonSettings: _*)
+  .settings(
+    libraryDependencies ++= Dependencies.aws
+  )
+  .dependsOn(s3, core)
 
 lazy val quartz = (project in file("quartz"))
   .settings(name := "rules-quartz")

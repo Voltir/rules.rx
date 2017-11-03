@@ -1,4 +1,4 @@
-package rules.aws.s3
+package rules.s3
 
 import akka.typed.{ActorRef, Behavior}
 import akka.typed.scaladsl.{Actor, TimerScheduler}
@@ -25,8 +25,9 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
   def watch[T](
       path: S3Path,
       notify: ActorRef[T],
+      initialDelay: FiniteDuration = 1.second
   )(f: Boolean => T): Behavior[Command] = Actor.withTimers { timers =>
-    timers.startSingleTimer(TickKey, Tick, 1.second)
+    timers.startSingleTimer(TickKey, Tick, initialDelay)
     impl(path, NotDetected, notify, f, timers)
   }
 
@@ -50,7 +51,6 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
       (resp, cnt)
     }.flatMap {
       case (resp, cnt) =>
-        resp.getMarker
         if (resp.isTruncated && consecutive <= config.maxConsecutiveQueries) {
           check(path, Some(resp.getMarker), cnt, consecutive + 1)
         } else if (resp.isTruncated) Try(-1)
@@ -87,10 +87,15 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
     def detecting: Behavior[Command] =
       next(NotDetected, config.notDetectedInterval)
 
-    Actor.immutable { (_, msg) =>
+    Actor.immutable { (ctx, msg) =>
       msg match {
         case Tick =>
-          check(path)
+          val result = check(path)
+          if (result.isFailure) {
+            ctx.system.log
+              .warning("Failed to get data from S3!: {}", result.failed.get)
+          }
+          result
             .map { size =>
               state match {
                 case NotDetected if size > 0  => unstable(size)
@@ -102,6 +107,7 @@ class DirectoryWatcher(client: AmazonS3, config: DirectoryWatcher.Config) {
 
                 case Stable(prev) if size == prev => stable(size)
                 case Stable(_) if size == -1      => stable(size)
+                case Stable(_) if size == 0       => detecting
                 case Stable(_)                    => unstable(size)
 
                 case _ => stable(size)

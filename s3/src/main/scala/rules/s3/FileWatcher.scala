@@ -1,4 +1,4 @@
-package rules.aws.s3
+package rules.s3
 
 import rules.behaviors._
 import akka.typed.{ActorRef, Behavior}
